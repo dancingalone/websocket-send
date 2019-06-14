@@ -6,29 +6,33 @@ import javax.websocket.OnClose;
 import javax.websocket.OnMessage;
 import javax.websocket.OnOpen;
 import javax.websocket.Session;
+import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
 import java.io.IOException;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * token为前端连接时的标识，后端根据此token维护用户与webSocket的绑定
+ */
 @Component
-@ServerEndpoint("/webSocket")
+@ServerEndpoint("/webSocket/{token}")
 public class WebSocket {
 
     private Session session;
 
-    private static CopyOnWriteArraySet<WebSocket> webSocketSet = new CopyOnWriteArraySet<>();
+    private static ConcurrentHashMap<String, WebSocket> webSocketMap = new ConcurrentHashMap<>();
 
     @OnOpen
-    public void onOpen(Session session) {
+    public void onOpen(@PathParam(value = "token") String token, Session session) {
         this.session = session;
-        webSocketSet.add(this);
-        System.out.println("new connect. total :" + webSocketSet.size());
+        webSocketMap.put(token, this);
+        System.out.println("new connect：" + token + ". total :" + webSocketMap.size());
     }
 
     @OnClose
-    public void onClose() {
-        webSocketSet.remove(this);
-        System.out.println("disconnect, total:" + webSocketSet.size());
+    public void onClose(@PathParam(value = "token") String token) {
+        webSocketMap.remove(token);
+        System.out.println("disconnect:" + token + ", total:" + webSocketMap.size());
     }
 
     @OnMessage
@@ -37,13 +41,16 @@ public class WebSocket {
     }
 
     public void sendMessage(String message) {
-        for (WebSocket webSocket : webSocketSet) {
-            System.out.println("radio ：" + message);
-            try {
-                webSocket.session.getBasicRemote().sendText(message);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        // 根据业务逻辑，找到token指向的webSocket
+        WebSocket webSocket = webSocketMap.get(String.valueOf(message.charAt(0)));
+        // 找不到返回
+        if (webSocket == null) {
+            return;
+        }
+        try {
+            webSocket.session.getBasicRemote().sendText(message);
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
